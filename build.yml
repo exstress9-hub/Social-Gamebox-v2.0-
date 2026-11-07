@@ -17,7 +17,7 @@ jobs:
       - name: Create Flutter project and copy sources
         run: |
           flutter create --platforms=android --project-name muhammetaly --org com.muhammetaly build_app
-          cp app/*.dart build_app/lib/
+             cp *.dart build_app/lib/
       - name: Android permissions
         run: |
           M=build_app/android/app/src/main/AndroidManifest.xml
