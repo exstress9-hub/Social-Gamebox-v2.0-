@@ -44,7 +44,7 @@ class _PS extends State<PlayersScreen> {
 
   void start() {
     final g = widget.g;
-    final Widget w = g.kind == 'role' ? RoleDeal(g: g) : g.kind == 'deck' ? DeckScreen(g: g) : g.kind == 'word' ? WordTimer(g: g) : BombScreen(g: g);
+    final Widget w = g.kind == 'role' ? RoleDeal(g: g) : g.kind == 'deck' ? DeckScreen(g: g) : g.kind == 'word' ? WordTimer(g: g) : g.kind == 'tap' ? TapDuel(g: g) : BombScreen(g: g);
     Navigator.push(context, MaterialPageRoute(builder: (_) => w));
   }
 
@@ -129,7 +129,7 @@ class _RD extends State<RoleDeal> {
   void _new() {
     rl = assign(widget.g.id, roster.length);
     final w = words();
-    secret = widget.g.id == 'timer' ? '${5 + _rnd.nextInt(11)}' : w[_rnd.nextInt(w.length)];
+    secret = widget.g.id == 'timer' ? '${5 + _rnd.nextInt(11)}' : widget.g.id == 'fakeit' ? (deckItems('fakeit')..shuffle()).first : w[_rnd.nextInt(w.length)];
     i = 0;
     seen = false;
     all = false;
@@ -137,11 +137,13 @@ class _RD extends State<RoleDeal> {
 
   String text(String r) {
     final id = widget.g.id;
+    if (r == 'imp' && id == 'fakeit') return L('Soruyu bilmiyorsun!\nCevapta blöf yap.', 'Ты не знаешь вопрос!\nБлефуй в ответе.');
     if (r == 'imp') return L('IMPOSTOR\nBlöf yap, yakalanma!', 'ИМПОСТОР\nБлефуй, не попадись!');
     if (r == 'fake') return L('Hikâyeyi UYDUR!\nKimse anlamasın.', 'ВЫДУМАЙ историю!\nЧтобы никто не понял.');
     if (r == 'word') {
       if (id == 'timer') return L('Süre: $secret sn', 'Время: $secret с');
       if (id == 'fakestory') return L('Konu: $secret\nGerçek bir hikâye anlat', 'Тема: $secret\nРасскажи настоящую историю');
+      if (id == 'fakeit') return L('Soru: $secret', 'Вопрос: $secret');
       return L('Kelime: $secret', 'Слово: $secret');
     }
     return roles[r]![lang.value == 'ru' ? 1 : 0];
@@ -200,6 +202,12 @@ class _DS extends State<DeckScreen> {
   final pool = <String, List<String>>{};
   int turn = 0;
   String? card;
+  bool rev = false;
+  String get answer {
+    final p = (card ?? '').split('||');
+    return widget.g.id == 'reverse' ? p[0].split(' ').reversed.join(' ') : (p.length > 1 ? p[1] : '');
+  }
+
   List<String> get keys => widget.g.id == 'tod' ? ['truth', 'dare'] : [widget.g.id];
 
   @override
@@ -211,7 +219,7 @@ class _DS extends State<DeckScreen> {
   String _draw(String k) {
     var p = pool[k];
     if (p == null || p.isEmpty) {
-      p = List<String>.of(decks[k]![lang.value == 'ru' ? 1 : 0])..shuffle();
+      p = deckItems(k)..shuffle();
       pool[k] = p;
     }
     return p.removeLast();
@@ -224,7 +232,18 @@ class _DS extends State<DeckScreen> {
       widget.g,
       Column(children: [
         Text('👉 $player', style: Theme.of(context).textTheme.headlineSmall),
-        Expanded(child: Center(child: card == null ? const Text('🎲', style: TextStyle(fontSize: 64)) : bigText(context, card!))),
+        Expanded(
+          child: Center(
+            child: card == null
+                ? const Text('🎲', style: TextStyle(fontSize: 64))
+                : Column(mainAxisSize: MainAxisSize.min, children: [
+                    bigText(context, card!.split('||')[0]),
+                    if (rev) ...[const SizedBox(height: 16), Text(answer, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge)],
+                  ]),
+          ),
+        ),
+        if (card != null && (widget.g.id == 'reverse' || widget.g.id == 'factfiction') && !rev)
+          OutlinedButton(onPressed: () => setState(() => rev = true), child: Text(L('Cevabı göster', 'Показать ответ'))),
         if (keys.length > 1 && card == null)
           Row(children: [
             Expanded(child: bigBtn(L('Doğruluk', 'Правда'), () => setState(() => card = _draw('truth')))),
@@ -234,6 +253,7 @@ class _DS extends State<DeckScreen> {
         else
           bigBtn(L('Sıradaki', 'Дальше'), () => setState(() {
                 turn++;
+                rev = false;
                 card = keys.length == 1 ? _draw(keys[0]) : null;
               })),
       ]),
@@ -358,7 +378,8 @@ class _BS extends State<BombScreen> {
 
   void _new() {
     t?.cancel();
-    cat = bombCats()[_rnd.nextInt(6)];
+    final bc = bombCats();
+    cat = bc[_rnd.nextInt(bc.length)];
     boom = false;
     t = Timer(Duration(seconds: 12 + _rnd.nextInt(24)), () {
       if (mounted) setState(() => boom = true);
@@ -392,4 +413,76 @@ class _BS extends State<BombScreen> {
             ]),
     );
   }
+}
+
+// ---------- Quick Tap (2 kişi, tek telefon) ----------
+class TapDuel extends StatefulWidget {
+  final Game g;
+  const TapDuel({super.key, required this.g});
+  @override
+  State<TapDuel> createState() => _TD();
+}
+
+class _TD extends State<TapDuel> {
+  final sc = [0, 0];
+  String phase = 'wait', msg = '';
+  Timer? t;
+
+  @override
+  void initState() {
+    super.initState();
+    _round();
+  }
+
+  void _round() {
+    t?.cancel();
+    phase = 'wait';
+    msg = '';
+    t = Timer(Duration(milliseconds: 2000 + _rnd.nextInt(4000)), () {
+      if (mounted) setState(() => phase = 'go');
+    });
+  }
+
+  void _tap(int who) {
+    if (phase == 'done') return;
+    final win = phase == 'go' ? who : 1 - who;
+    t?.cancel();
+    setState(() {
+      sc[win]++;
+      phase = 'done';
+      msg = '${roster[win]} ✅';
+    });
+    t = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(_round);
+    });
+  }
+
+  @override
+  void dispose() {
+    t?.cancel();
+    super.dispose();
+  }
+
+  Widget half(int who) {
+    final Color c = phase == 'go' ? Colors.green : phase == 'wait' ? Colors.red.shade800 : Colors.blueGrey;
+    final label = phase == 'go' ? 'TAP!' : phase == 'wait' ? L('Yeşili bekle', 'Жди зелёного') : msg;
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => _tap(who),
+        child: Container(
+          width: double.infinity,
+          margin: const EdgeInsets.all(4),
+          decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(24)),
+          child: Transform.rotate(
+            angle: who == 0 ? pi : 0,
+            child: Center(child: Text('${roster[who]}  ${sc[who]}\n$label', textAlign: TextAlign.center, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold))),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => shell(widget.g, Column(children: [half(0), half(1)]));
 }
